@@ -741,6 +741,7 @@ static const CGFloat kTranslationLit = 0.6;
     UILabel *_translation, *_romanised;
     NSUInteger _generation;
     SGKaraokeLineView *_backing;
+        BOOL _backingWaitsForSync;
 }
 
 // A sweep's word views, each put where the layout has it and told where it sits along the sweep.
