@@ -31,7 +31,7 @@ static NSString *directory(void) {
     return path;
 }
 
-NSArray<NSString *> *SGImportedLRCFiles(void) {
+if ([name.pathExtension.lowercaseString isEqualToString:@"lrc"]) [names addObject:name];
     NSMutableArray<NSString *> *names = [NSMutableArray array];
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:directory() error:nil]) {
         if ([name.pathExtension.lowercaseString isEqualToString:@"lrc"]) [names addObject:name];
@@ -170,6 +170,28 @@ static SGLRCSheet *sheetFrom(NSString *lrc) {
 }
 
 // Read once each; an import or a delete starts over.
+
+// Convert Apple Music-style TTML into Vitrine's karaoke lyrics model.
+static SGLRCSheet *sheetFromTTML(NSString *xml) {
+    NSArray<SGKaraokeLine *> *lines = SGTTMLLines(xml);
+
+    if (!lines.count) return nil;
+
+    SGLRCSheet *sheet = [SGLRCSheet new];
+    sheet.lines = lines;
+    sheet.synced = SGKaraokeLinesTiming(lines) != SGKaraokeTimingNone;
+
+    NSArray<NSNumber *> *starts = nil;
+    NSArray<NSString *> *texts = nil;
+
+    SGLyricsPageLines(lines, &starts, &texts);
+
+    sheet.starts = starts;
+    sheet.texts = texts;
+
+    return sheet;
+}
+
 static NSMutableDictionary<NSString *, SGLRCSheet *> *sg_sheets;
 
 static SGLRCSheet *sheetNamed(NSString *name) {
@@ -180,7 +202,11 @@ static SGLRCSheet *sheetNamed(NSString *name) {
         if (kept) return kept;
     }
     NSString *text = [NSString stringWithContentsOfFile:[directory() stringByAppendingPathComponent:name] encoding:NSUTF8StringEncoding error:nil];
-    SGLRCSheet *sheet = text ? sheetFrom(text) : nil;
+   BOOL isTTML =
+    [name.pathExtension.lowercaseString isEqualToString:@"ttml"];
+
+SGLRCSheet *sheet = !text ? nil :
+    (isTTML ? sheetFromTTML(text) : sheetFrom(text));
     if (!sheet) return nil;
     @synchronized (sg_sheets) { sg_sheets[name] = sheet; }
     return sheet;
@@ -326,18 +352,37 @@ static NSString *freeName(NSString *given) {
 NSString *SGImportLRC(NSURL *url, NSString *uri, NSError **error) {
     BOOL scoped = [url startAccessingSecurityScopedResource];
     NSError *readError = nil;
-    NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&readError];
-    if (scoped) [url stopAccessingSecurityScopedResource];
-    NSString *reason = nil, *text = nil;
-    if (!data) reason = readError.localizedDescription ?: @"The file could not be read.";
-    else if (!data.length) reason = @"The file is empty.";
-    else if (data.length > kMostBytes) reason = @"The file is over 1 MB, too large for lyrics.";
-    else {
-        text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
-            ?: [[NSString alloc] initWithData:data encoding:NSUTF16StringEncoding];
-        if (!text) reason = @"The file is not UTF-8 or UTF-16 text.";
-        else if (![text containsString:@"]"]) reason = @"The file has no LRC tags or timestamps.";
+NSString *reason = nil, *text = nil;
+
+BOOL isTTML = [url.pathExtension.lowercaseString isEqualToString:@"ttml"];
+BOOL isLRC = [url.pathExtension.lowercaseString isEqualToString:@"lrc"];
+
+if (!data) {
+    reason = readError.localizedDescription ?: @"The file could not be read.";
+} else if (!data.length) {
+    reason = @"The file is empty.";
+} else if (data.length > kMostBytes) {
+    reason = @"The file is over 1 MB, too large for lyrics.";
+} else {
+    text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
+        ?: [[NSString alloc] initWithData:data encoding:NSUTF16StringEncoding];
+
+    if (!text) {
+        reason = @"The file is not UTF-8 or UTF-16 text.";
+    } else if (isTTML) {
+        NSArray<SGKaraokeLine *> *ttmlLines = SGTTMLLines(text);
+        if (!ttmlLines.count) {
+            reason = @"The file is not a supported Apple Music-style TTML lyrics file.";
+        }
+    } else if (isLRC) {
+        if (![text containsString:@"]"]) {
+            reason = @"The file has no LRC tags or timestamps.";
+        }
+    } else {
+        reason = @"Select an .lrc or .ttml file.";
     }
+}
+
     if (reason) {
         if (error) *error = refusal(reason);
         return nil;
