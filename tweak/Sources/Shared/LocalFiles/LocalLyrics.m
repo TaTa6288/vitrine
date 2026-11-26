@@ -431,8 +431,6 @@ NSString *SGImportLRC(NSURL *url, NSString *uri, NSError **error) {
     return name;
 }
 
-}
-
 BOOL SGDeleteImportedLRC(NSString *name) {
     if (!name.length || name.pathComponents.count != 1) return NO;
     NSError *error = nil;
