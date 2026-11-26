@@ -39,15 +39,18 @@ static NSString *playingLocalFile(void) {
 
 - (instancetype)init {
     if (!(self = [super initWithStyle:UITableViewStyleInsetGrouped])) return nil;
-    self.title = @"Imported LRC files";
+    self.title = @"Imported lyric files";
     return self;
 }
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-    _footer = SGNote(@"Import for current track links the file to the local file playing, whatever its tags say. "
-                      "Import LRC… keeps a file for any track whose title and artist match its [ti:] and [ar:] tags, "
-                      "or its name as \"Artist - Title\". Swipe left on a file to delete it.");
+    
+_footer = SGNote(@"Import for current track links the file to the local file playing, whatever its tags say. "
+                  "Import lyrics… supports .lrc and Apple Music-style .ttml files. "
+                  "Files are matched by title and artist from LRC tags or by a name such as \"Artist - Title\". "
+                  "Swipe left on a file to delete it.");
+
     self.tableView.tableFooterView = _footer;
 }
 
@@ -95,7 +98,7 @@ static NSString *playingLocalFile(void) {
     if (path.section == 1) {
         UITableViewCell *cell = SGDequeueCell(table, @"import");
         if (path.row == SGLRCImportByName) {
-            SGFillCell(cell, @"Import LRC…", @"Matched by title and artist", nil, @"square.and.arrow.down");
+            SGFillCell(cell, @"Import lyrics…", @"Matched by title and artist", nil, @"square.and.arrow.down");
         } else {
             NSString *uri = playingLocalFile();
             NSString *title = SGLocalFileInfo(uri)[@"title"] ?: @"The local file playing";
@@ -153,10 +156,16 @@ static NSString *playingLocalFile(void) {
 - (void)documentPicker:(UIDocumentPickerViewController *)picker didPickDocumentsAtURLs:(NSArray<NSURL *> *)urls {
     NSURL *url = urls.firstObject;
     if (!url) return;
-    if (![url.pathExtension.lowercaseString isEqualToString:@"lrc"]) {
-        showAlert(self, @"Not an LRC file", @"Pick a file whose name ends in .lrc.");
-        return;
-    }
+    
+NSString *extension = url.pathExtension.lowercaseString;
+
+if (![extension isEqualToString:@"lrc"] &&
+    ![extension isEqualToString:@"ttml"]) {
+    showAlert(self, @"Unsupported lyrics file",
+              @"Select an .lrc or .ttml file.");
+    return;
+}
+
     NSError *error = nil;
     NSString *name = SGImportLRC(url, _linkTo, &error);
     if (!name) {
