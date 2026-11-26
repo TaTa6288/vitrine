@@ -798,11 +798,33 @@ static double wholeFrom(SGKaraokeLine *run, BOOL sweepsEstimates) {
     if (!CGRectIsNull(layout.translation)) _translation = [self asideAt:layout.translation font:style.translation text:activeLine.translation];
     if (!CGRectIsNull(layout.romanised)) _romanised = [self asideAt:layout.romanised font:style.romanised text:layout.romanisedText];
     if (layout.backingTop > 0) {
-        _backing = [[SGKaraokeLineView alloc] initWithLine:activeLine.backing ?: line.backing width:width style:style.backing under:self blurred:NO
-                                            sweepsEstimates:sweepsEstimates];
-        _backing.alpha = kBackingAlpha;
-        _backing.frame = CGRectMake(0, layout.backingTop, width, _backing.bounds.size.height);
-        [self addSubview:_backing];
+        
+SGKaraokeLine *backingLine = activeLine.backing ?: line.backing;
+
+_backingWaitsForSync =
+    backingLine.words.count > 0 &&
+    backingLine.timing == SGKaraokeTimingWords;
+
+_backing = [[SGKaraokeLineView alloc]
+    initWithLine:backingLine
+    width:width
+    style:style.backing
+    under:self
+    blurred:NO
+    sweepsEstimates:sweepsEstimates];
+
+_backing.alpha = kBackingAlpha;
+_backing.hidden = _backingWaitsForSync;
+
+_backing.frame = CGRectMake(
+    0,
+    layout.backingTop,
+    width,
+    _backing.bounds.size.height
+);
+
+[self addSubview:_backing];
+
     }
     NSMutableArray<NSString *> *asides = [NSMutableArray array];
     if (_translation.text.length) [asides addObject:_translation.text];
@@ -905,10 +927,21 @@ static double wholeFrom(SGKaraokeLine *run, BOOL sweepsEstimates) {
     }];
 }
 
+
 - (void)showTime:(double)ms {
-    for (SGKaraokeSweep *sweep in _sweeps) [sweep showTime:ms];
-    [_backing showTime:ms];   // timed on its own, so it lags the line as it is sung
+    for (SGKaraokeSweep *sweep in _sweeps) {
+        [sweep showTime:ms];
+    }
+
+    if (_backing) {
+        if (_backingWaitsForSync) {
+            _backing.hidden = ms < _backing.line.start;
+        }
+
+        [_backing showTime:ms];
+    }
 }
+
 
 - (void)showPlain {
     self.accessibilityTraits = UIAccessibilityTraitStaticText;
