@@ -31,12 +31,22 @@ static NSString *directory(void) {
     return path;
 }
 
-if ([name.pathExtension.lowercaseString isEqualToString:@"lrc"]) [names addObject:name];
+
+NSArray<NSString *> *SGImportedLRCFiles(void) {
     NSMutableArray<NSString *> *names = [NSMutableArray array];
+
     for (NSString *name in [NSFileManager.defaultManager contentsOfDirectoryAtPath:directory() error:nil]) {
-        if ([name.pathExtension.lowercaseString isEqualToString:@"lrc"]) [names addObject:name];
+        NSString *extension = name.pathExtension.lowercaseString;
+
+        if ([extension isEqualToString:@"lrc"] ||
+            [extension isEqualToString:@"ttml"]) {
+            [names addObject:name];
+        }
     }
+
     return [names sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
+}
+
 }
 
 #pragma mark - the links
@@ -349,63 +359,78 @@ static NSString *freeName(NSString *given) {
     return name;
 }
 
+
 NSString *SGImportLRC(NSURL *url, NSString *uri, NSError **error) {
     BOOL scoped = [url startAccessingSecurityScopedResource];
     NSError *readError = nil;
-NSString *reason = nil, *text = nil;
+    NSData *data = [NSData dataWithContentsOfURL:url options:0 error:&readError];
+    if (scoped) [url stopAccessingSecurityScopedResource];
 
-BOOL isTTML = [url.pathExtension.lowercaseString isEqualToString:@"ttml"];
-BOOL isLRC = [url.pathExtension.lowercaseString isEqualToString:@"lrc"];
+    NSString *reason = nil, *text = nil;
+    BOOL isTTML = [url.pathExtension.lowercaseString isEqualToString:@"ttml"];
+    BOOL isLRC = [url.pathExtension.lowercaseString isEqualToString:@"lrc"];
 
-if (!data) {
-    reason = readError.localizedDescription ?: @"The file could not be read.";
-} else if (!data.length) {
-    reason = @"The file is empty.";
-} else if (data.length > kMostBytes) {
-    reason = @"The file is over 1 MB, too large for lyrics.";
-} else {
-    text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
-        ?: [[NSString alloc] initWithData:data encoding:NSUTF16StringEncoding];
-
-    if (!text) {
-        reason = @"The file is not UTF-8 or UTF-16 text.";
-    } else if (isTTML) {
-        NSArray<SGKaraokeLine *> *ttmlLines = SGTTMLLines(text);
-        if (!ttmlLines.count) {
-            reason = @"The file is not a supported Apple Music-style TTML lyrics file.";
-        }
-    } else if (isLRC) {
-        if (![text containsString:@"]"]) {
-            reason = @"The file has no LRC tags or timestamps.";
-        }
+    if (!data) {
+        reason = readError.localizedDescription ?: @"The file could not be read.";
+    } else if (!data.length) {
+        reason = @"The file is empty.";
+    } else if (data.length > kMostBytes) {
+        reason = @"The file is over 1 MB, too large for lyrics.";
     } else {
-        reason = @"Select an .lrc or .ttml file.";
+        text = [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]
+            ?: [[NSString alloc] initWithData:data encoding:NSUTF16StringEncoding];
+
+        if (!text) {
+            reason = @"The file is not UTF-8 or UTF-16 text.";
+        } else if (isTTML) {
+            if (!SGTTMLLines(text).count) {
+                reason = @"The file is not a supported Apple Music-style TTML lyrics file.";
+            }
+        } else if (isLRC) {
+            if (![text containsString:@"]"]) {
+                reason = @"The file has no LRC tags or timestamps.";
+            }
+        } else {
+            reason = @"Select an .lrc or .ttml file.";
+        }
     }
-}
 
     if (reason) {
         if (error) *error = refusal(reason);
         return nil;
     }
+
     BOOL first = SGImportedLRCFiles().count == 0;
     NSString *name = freeName(url.lastPathComponent);
     NSError *writeError = nil;
-    [NSFileManager.defaultManager createDirectoryAtPath:directory() withIntermediateDirectories:YES attributes:nil error:&writeError];
-    if (![text writeToFile:[directory() stringByAppendingPathComponent:name] atomically:YES encoding:NSUTF8StringEncoding error:&writeError]) {
+
+    [NSFileManager.defaultManager createDirectoryAtPath:directory()
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:&writeError];
+
+    if (![text writeToFile:[directory() stringByAppendingPathComponent:name]
+                atomically:YES
+                  encoding:NSUTF8StringEncoding
+                     error:&writeError]) {
         SGLog(@"lrc: %@ not written: %@", name, writeError);
         if (error) *error = writeError;
         return nil;
     }
+
     NSString *bare = bareURI(uri);
     if (bare) {
         NSMutableDictionary *links = [allLinks() mutableCopy];
         links[bare] = name;
         storeLinks(links);
     }
+
     if (first || bare) moveToTop();
     SGLog(@"lrc: imported %@%@", name, bare ? [@" for " stringByAppendingString:bare] : @"");
     changed();
     return name;
+}
+
 }
 
 BOOL SGDeleteImportedLRC(NSString *name) {
