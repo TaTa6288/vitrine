@@ -47,7 +47,7 @@ NSArray<NSString *> *SGImportedLRCFiles(void) {
     return [names sortedArrayUsingSelector:@selector(localizedStandardCompare:)];
 }
 
-}
+
 
 #pragma mark - the links
 
