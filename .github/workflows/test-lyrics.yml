@@ -1,0 +1,23 @@
+name: Test lyrics harness
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - custom/ttml-backing-vocals
+    paths:
+      - "tweak/Sources/Shared/Lyrics/**"
+      - "tweak/Sources/Shared/LyricsSources/SGTTML.m"
+      - "tweak/Sources/Redesigned/Lyrics/**"
+      - "harness/lyrics/**"
+      - ".github/workflows/test-lyrics.yml"
+
+jobs:
+  build-lyrics-harness:
+    runs-on: macos-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build lyrics harness
+        run: ./harness/lyrics/build.sh
